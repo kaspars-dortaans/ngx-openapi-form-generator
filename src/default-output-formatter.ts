@@ -53,15 +53,11 @@ export class DefaultOutputFormatter implements OutputFormatter {
             });
         });
 
-        let propContent = '';
-        if (properties.length) {
-            properties.forEach(p => {
-                propContent += `${p.name}?: ${p.type};
-`;
-            });
-        }
-        propContent = `export interface ${this.options.templatePropertyInterfaceName} {
+        let propContent = properties.map(p => `${p.name}?: ${p.type};`).join(`
+        `);
+        propContent = `export interface ${this.options.templatePropertyInterfaceName}<T = undefined> {
                 ${propContent}
+                nestedType?: T;
             };`;
         fileMap.set('templateProperty.ts', this.formatContent(propContent));
         indexContent += `export { ${this.options.templatePropertyInterfaceName} } from './templateProperty';
@@ -126,23 +122,31 @@ export class DefaultOutputFormatter implements OutputFormatter {
 
         entity.fields.forEach(o => {
             if (o.entity) {
-                //Template interface
-                factories.push({ factoryClassName: this.getFactoryName(o.entity), factoryPropertyName: this.getFactoryName(o.entity, false) });
-                formTypes.add(this.getFactoryName(o.entity));
-                factoryFields.push(`'${o.fieldName}': (fg: FormGroup) => this.${this.getFactoryName(o.entity, false)}.fillForm(fg)`);
+                //Interface
+                const interfaceName = this.getTemplateInterfaceName(o.entity);
+                formTypes.add(interfaceName);
+                templateContractFields.push(`${o.fieldName}: ${this.options.templatePropertyInterfaceName}<${interfaceName}>;`);
 
                 //Template
                 const templateConstantName = this.getTemplateConstantName(o.entity);
-                templateFields.push(`'${o.fieldName}': ${templateConstantName}`);
                 formTypes.add(templateConstantName);
+                const fieldType = o.definition?.properties?.[o.fieldName]?.type;
+                if (typeof fieldType === "string" && fieldType === "object") {
+                    templateFields.push(`'${o.fieldName}': ${templateConstantName}`);
+                } else {
+                    templateFields.push(`'${o.fieldName}': {
+                        ${o.properties.map(s => DefaultOutputFormatter.formatTemplateValue(s)).join(',' + lineSep)}
+                        'nestedType': ${templateConstantName}
+                    }`);
+                }
 
                 //Factory
-                const templateInterfacePropertyType = this.getTemplateInterfaceName(o.entity);
-                formTypes.add(templateInterfacePropertyType);
-                templateContractFields.push(`${o.fieldName}: ${templateInterfacePropertyType}`);
+                factories.push({ factoryClassName: this.getFactoryName(o.entity), factoryPropertyName: this.getFactoryName(o.entity, false) });
+                formTypes.add(this.getFactoryName(o.entity));
+                factoryFields.push(`'${o.fieldName}': (fg: FormGroup) => this.${this.getFactoryName(o.entity, false)}.fillForm(fg)`);
             } else {
-                //Template interface
-                factoryFields.push(`'${o.fieldName}': [${o.validators.map(o => o.definition).join(', ')}]`);
+                //Interface
+                templateContractFields.push(`${o.fieldName}: ${this.options.templatePropertyInterfaceName};`);
 
                 //Template
                 templateFields.push(`'${o.fieldName}': {
@@ -150,12 +154,13 @@ export class DefaultOutputFormatter implements OutputFormatter {
                 }`);
 
                 //Factory
-                templateContractFields.push(`${o.fieldName}: ${this.options.templatePropertyInterfaceName};`);
+                factoryFields.push(`'${o.fieldName}': [${o.validators.map(o => o.definition).join(', ')}]`);
             }
 
             o.properties.forEach(p => {
                 properties.push(p);
             });
+
             o.validators.forEach(prop => {
                 if (!imports.has(prop.import.path)) {
                     imports.set(prop.import.path, []);
@@ -220,8 +225,6 @@ export class DefaultOutputFormatter implements OutputFormatter {
         project.createSourceFile(this.options.outputFolder + fileName, file, { overwrite: true });
         return project.save();
     }
-
-
 }
 
 type ContentResult = {

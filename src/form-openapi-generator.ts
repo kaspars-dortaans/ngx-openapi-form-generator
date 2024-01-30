@@ -65,8 +65,8 @@ export class FormOpenapiGenerator {
 
     private fillNestedObjects(form: EntityForm) {
         for (const field of form.fields) {
-            if (field.definition) {
-                field.entity = this.definitions.get(field.definition);
+            if (typeof field.definition?.type === "string" && (field.definition.type === "object" || field.definition.type === "array")) {
+                field.entity = this.definitions.get(field.definition.type === "array" ? field.definition.items : field.definition);
             }
         }
     }
@@ -137,7 +137,7 @@ export class FormOpenapiGenerator {
         const ruleResults = this.makeFieldRules(fieldName, definition);
         const res: Field = {
             fieldName: fieldName,
-            definition: definition.properties[fieldName].items,
+            definition: definition.properties[fieldName],
             validators: [],
             properties: []
         }
