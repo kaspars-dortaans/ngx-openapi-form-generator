@@ -6,11 +6,13 @@
  * Copyright (c) 2021 humbertda
  */
 
-import {OutputFormatter} from './output-formatter';
-import {Definition} from './rules';
+import { OutputFormatter } from './output-formatter';
+import { Definition } from './rules';
 
 export interface Field {
     fieldName: string;
+    definition?: Definition;
+    entity?: EntityForm;
     validators: Validator[];
     properties: Property[];
 }
@@ -31,7 +33,7 @@ export interface FormOpenApiGeneratorOption {
 }
 
 export type Property = {
-    type: 'number'|'string'|'boolean';
+    type: 'number' | 'string' | 'boolean';
     name: string;
     value: string;
 }
@@ -47,8 +49,8 @@ export type Import = {
 };
 
 export type RuleResult = {
-    validators: Validator[]|null;
-    properties: Property[]|null;
+    validators: Validator[] | null;
+    properties: Property[] | null;
 };
 
-export type Rule = (fieldName: string, properties: Definition) => RuleResult|null;
+export type Rule = (fieldName: string, properties: Definition) => RuleResult | null;

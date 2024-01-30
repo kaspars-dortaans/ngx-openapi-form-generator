@@ -6,10 +6,10 @@
  * Copyright (c) 2021 humbertda
  */
 
-import {Project} from 'ts-morph';
-import {OutputFormatter} from './output-formatter';
-import {EntityForm, GeneratorResult, Property} from './models';
-import {OutputFormatterOptions} from './output-formatter-options';
+import { Project } from 'ts-morph';
+import { OutputFormatter } from './output-formatter';
+import { EntityForm, GeneratorResult, Property } from './models';
+import { OutputFormatterOptions } from './output-formatter-options';
 import camelcase from 'camelcase';
 import prettier from 'prettier';
 
@@ -18,7 +18,8 @@ export class DefaultOutputFormatter implements OutputFormatter {
     private readonly options: OutputFormatterOptions;
 
     constructor(opts: Partial<OutputFormatterOptions>) {
-        this.options = {...{
+        this.options = {
+            ...{
                 filePrefix: '',
                 fileSuffix: '',
                 outputFolder: './',
@@ -30,7 +31,8 @@ export class DefaultOutputFormatter implements OutputFormatter {
                     bracketSpacing: true,
                     tabWidth: 4
                 }
-            }, ...opts};
+            }, ...opts
+        };
     }
 
     public async handleOutput(content: GeneratorResult): Promise<void> {
@@ -39,7 +41,7 @@ export class DefaultOutputFormatter implements OutputFormatter {
         let indexContent = '';
         content.entityForms.forEach(entity => {
             const file = this.options.filePrefix + camelcase(entity.entityName) + this.options.fileSuffix;
-            const fileName =  file + '.ts';
+            const fileName = file + '.ts';
             const content = this.makeContent(entity);
             indexContent += `export { ${this.getTemplateConstantName(entity)}, ${this.getTemplateInterfaceName(entity)}, ${this.getFactoryName(entity)} } from './${file}';
 `;
@@ -51,18 +53,18 @@ export class DefaultOutputFormatter implements OutputFormatter {
             });
         });
 
-            let propContent = '';
+        let propContent = '';
         if (properties.length) {
             properties.forEach(p => {
                 propContent += `${p.name}?: ${p.type};
 `;
             });
         }
-            propContent = `export interface ${this.options.templatePropertyInterfaceName} {
+        propContent = `export interface ${this.options.templatePropertyInterfaceName} {
                 ${propContent}
             };`;
-            fileMap.set('templateProperty.ts', this.formatContent(propContent));
-            indexContent += `export { ${this.options.templatePropertyInterfaceName} } from './templateProperty';
+        fileMap.set('templateProperty.ts', this.formatContent(propContent));
+        indexContent += `export { ${this.options.templatePropertyInterfaceName} } from './templateProperty';
 `;
 
         fileMap.set('index.ts', this.formatContent(indexContent));
@@ -72,7 +74,7 @@ export class DefaultOutputFormatter implements OutputFormatter {
 `;
         fileMap.set('types.ts', this.formatContent(typesContent));
 
-        for(let file of fileMap.entries()) {
+        for (let file of fileMap.entries()) {
             await this.saveFile(file[1], file[0])
         }
     }
@@ -95,15 +97,15 @@ export class DefaultOutputFormatter implements OutputFormatter {
     }
 
     private getTemplateInterfaceName(entity: EntityForm): string {
-        return camelcase(entity.entityName, {pascalCase: true}) + 'Template';
+        return camelcase(entity.entityName, { pascalCase: true }) + 'Template';
     }
 
     private getTemplateConstantName(entity: EntityForm): string {
         return camelcase(entity.entityName) + 'Template';
     }
 
-    private getFactoryName(entity: EntityForm): string {
-        return camelcase(entity.entityName, {pascalCase: true}) + 'Factory';
+    private getFactoryName(entity: EntityForm, pascalCase = true): string {
+        return camelcase(entity.entityName, { pascalCase }) + 'Factory';
     }
 
     private makeContent(entity: EntityForm): ContentResult {
@@ -114,15 +116,43 @@ export class DefaultOutputFormatter implements OutputFormatter {
         let templateFields: string[] = [];
         let templateContractFields: string[] = [];
         let imports = new Map<string, string[]>();
+
         imports.set('@angular/forms', ['FormGroup', 'FormBuilder'])
         imports.set('./templateProperty', ['TemplateProperty'])
         imports.set('./types', ['PropertyValidator'])
+
+        const formTypes: Set<string> = new Set();
+        const factories: Array<{ factoryClassName: string, factoryPropertyName: string }> = [];
+
         entity.fields.forEach(o => {
-            factoryFields.push(`'${o.fieldName}': [${o.validators.map(o => o.definition).join(', ')}]`);
-            templateFields.push(`'${o.fieldName}': {
-                ${o.properties.map(s => DefaultOutputFormatter.formatTemplateValue(s)).join(',' + lineSep)}
-            }`);
-            templateContractFields.push(`${o.fieldName}: ${this.options.templatePropertyInterfaceName};`);
+            if (o.entity) {
+                //Template interface
+                factories.push({ factoryClassName: this.getFactoryName(o.entity), factoryPropertyName: this.getFactoryName(o.entity, false) });
+                formTypes.add(this.getFactoryName(o.entity));
+                factoryFields.push(`'${o.fieldName}': (fg: FormGroup) => this.${this.getFactoryName(o.entity, false)}.fillForm(fg)`);
+
+                //Template
+                const templateConstantName = this.getTemplateConstantName(o.entity);
+                templateFields.push(`'${o.fieldName}': ${templateConstantName}`);
+                formTypes.add(templateConstantName);
+
+                //Factory
+                const templateInterfacePropertyType = this.getTemplateInterfaceName(o.entity);
+                formTypes.add(templateInterfacePropertyType);
+                templateContractFields.push(`${o.fieldName}: ${templateInterfacePropertyType}`);
+            } else {
+                //Template interface
+                factoryFields.push(`'${o.fieldName}': [${o.validators.map(o => o.definition).join(', ')}]`);
+
+                //Template
+                templateFields.push(`'${o.fieldName}': {
+                    ${o.properties.map(s => DefaultOutputFormatter.formatTemplateValue(s)).join(',' + lineSep)}
+                }`);
+
+                //Factory
+                templateContractFields.push(`${o.fieldName}: ${this.options.templatePropertyInterfaceName};`);
+            }
+
             o.properties.forEach(p => {
                 properties.push(p);
             });
@@ -132,13 +162,14 @@ export class DefaultOutputFormatter implements OutputFormatter {
                 }
                 const cRef = imports.get(prop.import.path);
                 if (cRef != null) {
-                    if(cRef.indexOf(prop.import.name) < 0) {
+                    if (cRef.indexOf(prop.import.name) < 0) {
                         cRef.push(prop.import.name);
                     }
                 }
             })
         });
         let importsValues: string[] = [];
+        imports.set("./", Array.from(formTypes));
         imports.forEach((value, key) => {
             importsValues.push(`import {${value.join(', ')}} from '${key}';`);
         });
@@ -154,18 +185,27 @@ export class DefaultOutputFormatter implements OutputFormatter {
         }
         
         export class ${this.getFactoryName(entity)} {
-        
-            private readonly _fields: { [id: string] : PropertyValidator; } = {
+            ${factories.map(f => `${f.factoryPropertyName}: ${f.factoryClassName};`).join(lineSep)}
+
+            private readonly _fields: { [id: string] : PropertyValidator | ((fb: FormGroup) => FormGroup); } = {
                 ${factoryFields.join(`,
                  `)}
             };
             
-            constructor(private readonly _formBuilder: FormBuilder) { }
+            constructor(private readonly _formBuilder: FormBuilder) {
+                ${factories.map(f => `this.${f.factoryPropertyName} = new ${f.factoryClassName}(_formBuilder);`).join(lineSep)}
+            }
             
-            public fillForm(form: FormGroup): void {
+            public fillForm(form: FormGroup): FormGroup {
                 Object.keys(this._fields).forEach(fieldKey => {
-                    form.addControl(fieldKey, this._formBuilder.control(null, this._fields[fieldKey]));
+                    form.addControl(
+                        fieldKey,
+                        typeof this._fields[fieldKey] === "function"
+                            ? (this._fields[fieldKey] as Function)(this._formBuilder.group({}))
+                            : this._formBuilder.control(null, this._fields[fieldKey] as [])
+                    );
                 });
+                return form;
             }
         }
         `;

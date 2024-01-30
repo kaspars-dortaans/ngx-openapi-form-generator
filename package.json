@@ -10,7 +10,8 @@
   "scripts": {
     "test": "npm run build && jasmine dist/*.spec.js",
     "build": "tsc --project .\\",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "pack": "mkdir packed && npm pack --pack-destination ./packed"
   },
   "author": "Dany Humbert <dany.humbert@hanyapps.com> (https://github.com/humbertda)",
   "license": "MIT",
