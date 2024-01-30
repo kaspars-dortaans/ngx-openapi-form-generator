@@ -6,10 +6,10 @@
  * Copyright (c) 2021 humbertda
  */
 
-import {Definition, emailRule, maxLengthRule, minLengthRule, patternRule, requiredRule} from './rules';
-import {OpenAPI, OpenAPIV2, OpenAPIV3} from 'openapi-types';
+import { Definition, emailRule, maxLengthRule, minLengthRule, patternRule, requiredRule } from './rules';
+import { OpenAPI, OpenAPIV2, OpenAPIV3 } from 'openapi-types';
 import SwaggerParser from '@apidevtools/swagger-parser';
-import {EntityForm, Field, FormOpenApiGeneratorOption, GeneratorResult, Rule, RuleResult} from './models';
+import { EntityForm, Field, FormOpenApiGeneratorOption, GeneratorResult, Rule, RuleResult } from './models';
 
 export class FormOpenapiGenerator {
 
@@ -30,15 +30,23 @@ export class FormOpenapiGenerator {
     }
 
     private build(document: OpenAPI.Document): GeneratorResult {
-        return this.makeForm(document);
+        this.definitions = new Map();
+        const forms = this.makeForm(document);
+
+        //Fill nested forms
+        for (const form of forms.entityForms) {
+            this.fillNestedObjects(form);
+        }
+
+        return forms;
     }
 
     public static async from(opts: FormOpenApiGeneratorOption): Promise<void> {
         const parser = new SwaggerParser();
         const generator = new FormOpenapiGenerator();
         const document = await parser.dereference(opts.specFileOrUrlPath);
-        if(opts.extraRules) {
-            opts.extraRules.forEach(r =>{
+        if (opts.extraRules) {
+            opts.extraRules.forEach(r => {
                 if (r) {
                     generator.addRule(r);
                 }
@@ -53,13 +61,23 @@ export class FormOpenapiGenerator {
 
 
     ///// Builder
+    private definitions = new Map<Definition, EntityForm>();
 
+    private fillNestedObjects(form: EntityForm) {
+        for (const field of form.fields) {
+            if (field.definition) {
+                field.entity = this.definitions.get(field.definition);
+            }
+        }
+    }
 
     private makeDefinition(definitionName: string, definition: Definition): EntityForm {
-        return {
+        const form = {
             entityName: definitionName,
             fields: this.makeFieldsBody(definition)
-        }
+        };
+        this.definitions.set(definition, form);
+        return form;
     }
 
     private makeFieldsBody(definition: Definition): Field[] {
@@ -119,9 +137,11 @@ export class FormOpenapiGenerator {
         const ruleResults = this.makeFieldRules(fieldName, definition);
         const res: Field = {
             fieldName: fieldName,
+            definition: definition.properties[fieldName].items,
             validators: [],
             properties: []
         }
+
         ruleResults.forEach(itm => {
             if (itm.validators != null) {
                 itm.validators.forEach(validator => {
@@ -141,7 +161,7 @@ export class FormOpenapiGenerator {
         const res: RuleResult[] = [];
         this.rules.forEach(rule => {
             const ruleResult = rule(fieldName, definition);
-            if(ruleResult != null) {
+            if (ruleResult != null) {
                 res.push(ruleResult);
             }
         })
